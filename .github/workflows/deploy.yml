@@ -1,0 +1,66 @@
+name: Deploy Backend
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          cat >>~/.ssh/config <<END
+          Host ec2
+            HostName ${{ secrets.EC2_HOST }}
+            User ubuntu
+            IdentityFile ~/.ssh/deploy_key
+            StrictHostKeyChecking no
+          END
+
+      - name: Deploy Backend
+        run: |
+          # Create necessary directories if they don't exist
+          ssh ec2 'mkdir -p /home/ubuntu/media-manager/backend'
+          ssh ec2 'mkdir -p /home/ubuntu/media-manager/backend/staticfiles'
+
+          # Clone or update the repository
+          ssh ec2 'if [ ! -d "/home/ubuntu/media-manager/backend/.git" ]; then \
+            cd /home/ubuntu/media-manager/backend && \
+            git clone ${{ secrets.REPO_URL }} . ; \
+          else \
+            cd /home/ubuntu/media-manager/backend && \
+            git pull origin master ; \
+          fi'
+
+          # Setup virtual environment if it doesn't exist
+          ssh ec2 'if [ ! -d "/home/ubuntu/media-manager/backend/venv" ]; then \
+            cd /home/ubuntu/media-manager/backend && \
+            python3 -m venv venv && \
+            source venv/bin/activate && \
+            pip install -r requirements.txt && \
+            pip install gunicorn ; \
+          else \
+            cd /home/ubuntu/media-manager/backend && \
+            source venv/bin/activate && \
+            pip install -r requirements.txt ; \
+          fi'
+
+          # Collect static files and run migrations
+          ssh ec2 'cd /home/ubuntu/media-manager/backend && \
+            source venv/bin/activate && \
+            export DJANGO_ENV=production && \
+            python manage.py collectstatic --noinput && \
+            python manage.py migrate && \
+            sudo systemctl restart media-manager'
+
+          # Set proper permissions
+          ssh ec2 'sudo chown -R ubuntu:ubuntu /home/ubuntu/media-manager/backend'
