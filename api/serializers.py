@@ -21,6 +21,10 @@ class SearchQuerySerializer(serializers.Serializer):
     photographer = serializers.ListField(
         child=serializers.CharField(), required=False, default=list, allow_empty=True
     )
+    alignment = serializers.ChoiceField(
+        choices=["portrait", "square", "landscape"], required=True, allow_null=True
+    )
+    
 
 
 class MediaSourceSerializer(serializers.Serializer):
@@ -29,6 +33,7 @@ class MediaSourceSerializer(serializers.Serializer):
     bildnummer = serializers.CharField()
     datum = serializers.DateTimeField()
     suchtext = serializers.CharField()
+    title = serializers.SerializerMethodField(read_only=True)
     fotografen = serializers.CharField()
     breite = serializers.IntegerField()
     hoehe = serializers.IntegerField()
@@ -40,12 +45,16 @@ class MediaSourceSerializer(serializers.Serializer):
         bildnummer = obj.get("bildnummer", "")
         db = obj.get("db", "st")
         return get_media_url(db, bildnummer)
+    
+    def get_title(self, obj):
+        return f"{obj.get("suchtext", "")[:80]}..."
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
         return {
             "image_number": data["bildnummer"],
             "date": data["datum"],
+            "title": data['title'],
             "search_text": data["suchtext"],
             "photographers": data["fotografen"],
             "height": data["hoehe"],
