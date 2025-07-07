@@ -95,6 +95,58 @@ class ElasticsearchService:
                 query["bool"]["filter"].append(
                     {"terms": {"fotografen": params["photographer"]}}
                 )
+        
+        # Only add alignment filter if it is not None or empty string
+        alignment = params.get("alignment", None)
+        if alignment:
+            if alignment == "portrait":
+                # Portrait: height > width, only if both fields exist
+                query["bool"]["filter"].append(
+                    {
+                        "script": {
+                            "script": {
+                                "source": (
+                                    "doc.containsKey('hoehe') && doc.containsKey('breite') && "
+                                    "doc['hoehe'].size() > 0 && doc['breite'].size() > 0 && "
+                                    "doc['hoehe'].value > doc['breite'].value"
+                                ),
+                                "lang": "painless"
+                            }
+                        }
+                    }
+                )
+            elif alignment == "landscape":
+                # Landscape: width > height, only if both fields exist
+                query["bool"]["filter"].append(
+                    {
+                        "script": {
+                            "script": {
+                                "source": (
+                                    "doc.containsKey('breite') && doc.containsKey('hoehe') && "
+                                    "doc['breite'].size() > 0 && doc['hoehe'].size() > 0 && "
+                                    "doc['breite'].value > doc['hoehe'].value"
+                                ),
+                                "lang": "painless"
+                            }
+                        }
+                    }
+                )
+            elif alignment == "square":
+                # Square: width == height (allowing small tolerance, e.g., 5px), only if both fields exist
+                query["bool"]["filter"].append(
+                    {
+                        "script": {
+                            "script": {
+                                "source": (
+                                    "doc.containsKey('breite') && doc.containsKey('hoehe') && "
+                                    "doc['breite'].size() > 0 && doc['hoehe'].size() > 0 && "
+                                    "Math.abs(doc['breite'].value - doc['hoehe'].value) <= 5"
+                                ),
+                                "lang": "painless"
+                            }
+                        }
+                    }
+                )
 
         # Build the complete search body
         search_body = {
